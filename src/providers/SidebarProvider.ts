@@ -3,10 +3,11 @@ import { ConnectionStorage } from '../storage/ConnectionStorage';
 import { ConnectionManager } from '../db/ConnectionManager';
 import { HistoryStorage } from '../storage/HistoryStorage';
 import { testConnection } from '../db/PgDriver';
-import { getSchemas, getTables, getColumns, getFunctions, getFunctionParams, previewTable, getCompletionData } from '../db/queries';
+import { getSchemas, getTables, getColumns, getFunctions, getFunctionParams, previewTable, getCompletionData, getTableDDL, getIndexes, getConstraints, getFKMap } from '../db/queries';
 import { validateConnection } from '../types/PgConnection';
 import { getSidebarHtml } from '../webview/getSidebarHtml';
 import { PreviewPanel } from './PreviewPanel';
+import { DDLPanel } from './DDLPanel';
 
 interface IpcMessage {
   command: string;
@@ -272,6 +273,75 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         } catch {
           // completions are best-effort
         }
+        break;
+      }
+
+      // ── DDL Viewer (#20, #21, #22) ────────────────────────────────
+
+      case 'openDDL': {
+        const { connId, schema, table } = message.data as { connId: string; schema: string; table: string };
+        const driver = this._connManager.getDriver(connId);
+        if (!driver) { vscode.window.showErrorMessage('Not connected. Please connect first.'); return; }
+        const conn = this._storage.getConnection(connId);
+        try {
+          const [ddl, indexes, constraints, fkMap] = await Promise.all([
+            getTableDDL(driver, schema, table),
+            getIndexes(driver, schema, table),
+            getConstraints(driver, schema, table),
+            getFKMap(driver, schema, table),
+          ]);
+          DDLPanel.show({
+            extensionUri: this._context.extensionUri,
+            connId,
+            connLabel: conn?.label ?? connId,
+            schema,
+            table,
+            ddl,
+            indexes,
+            constraints,
+            fkMap,
+            onNavigate: (cid, s, t) => {
+              this.postMessage('navigateToTable', { connId: cid, schema: s, table: t });
+            },
+          });
+        } catch (err) {
+          vscode.window.showErrorMessage(`Failed to load DDL: ${String(err)}`);
+        }
+        break;
+      }
+
+      // ── Export result (#23) ───────────────────────────────────────
+
+      case 'exportResult': {
+        const { format, columns, rows } = message.data as {
+          format: 'csv' | 'json';
+          columns: string[];
+          rows: Record<string, unknown>[];
+        };
+        const ext = format === 'csv' ? 'csv' : 'json';
+        const uri = await vscode.window.showSaveDialog({
+          filters: format === 'csv' ? { 'CSV files': ['csv'] } : { 'JSON files': ['json'] },
+          defaultUri: vscode.Uri.file(`query-result.${ext}`),
+        });
+        if (!uri) break;
+        let content: string;
+        if (format === 'csv') {
+          const escape = (v: unknown) => {
+            if (v === null || v === undefined) return '';
+            const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+            return s.includes(',') || s.includes('"') || s.includes('\n')
+              ? '"' + s.replace(/"/g, '""') + '"'
+              : s;
+          };
+          content = [
+            columns.map(escape).join(','),
+            ...rows.map(row => columns.map(c => escape(row[c])).join(',')),
+          ].join('\n');
+        } else {
+          content = JSON.stringify(rows, null, 2);
+        }
+        await vscode.workspace.fs.writeFile(uri, Buffer.from(content, 'utf-8'));
+        vscode.window.showInformationMessage(`Exported ${rows.length} rows to ${uri.fsPath}`);
         break;
       }
 

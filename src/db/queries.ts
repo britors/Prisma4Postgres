@@ -4,6 +4,29 @@ export interface SchemaInfo {
   name: string;
 }
 
+export interface IndexInfo {
+  name: string;
+  definition: string;
+  size: string;
+  isUnique: boolean;
+  isPrimary: boolean;
+}
+
+export interface ConstraintInfo {
+  name: string;
+  type: string;
+  definition: string;
+}
+
+export interface FKMapEntry {
+  direction: 'outgoing' | 'incoming';
+  constraintName: string;
+  column: string;
+  foreignSchema: string;
+  foreignTable: string;
+  foreignColumn: string;
+}
+
 export interface TableInfo {
   name: string;
   type: 'table' | 'view';
@@ -183,4 +206,149 @@ export async function previewTable(
     rows,
     estimate: Number(est[0]?.estimate ?? 0),
   };
+}
+
+export async function getTableDDL(driver: PgDriver, schema: string, table: string): Promise<string> {
+  const oidRows = await driver.query<{ oid: number }>(
+    `SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = $2 AND n.nspname = $1`,
+    [schema, table]
+  );
+  if (!oidRows.length) return `-- Table "${schema}"."${table}" not found`;
+  const oid = oidRows[0].oid;
+
+  const columns = await driver.query<{
+    attname: string;
+    type: string;
+    notnull: boolean;
+    defval: string | null;
+  }>(
+    `SELECT a.attname, pg_catalog.format_type(a.atttypid, a.atttypmod) AS type,
+            a.attnotnull AS notnull, pg_get_expr(d.adbin, d.adrelid) AS defval
+     FROM pg_attribute a
+     LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+     WHERE a.attrelid = $1 AND a.attnum > 0 AND NOT a.attisdropped
+     ORDER BY a.attnum`,
+    [oid]
+  );
+
+  const constraints = await driver.query<{ conname: string; condef: string }>(
+    `SELECT conname, pg_get_constraintdef(oid) AS condef
+     FROM pg_constraint WHERE conrelid = $1 AND contype IN ('p','f','u','c')
+     ORDER BY contype, conname`,
+    [oid]
+  );
+
+  const qSchema = schema.replace(/"/g, '""');
+  const qTable = table.replace(/"/g, '""');
+
+  const colLines = columns.map(c => {
+    let line = `  "${c.attname}" ${c.type}`;
+    if (c.defval !== null) line += ` DEFAULT ${c.defval}`;
+    if (c.notnull) line += ' NOT NULL';
+    return line;
+  });
+  const conLines = constraints.map(c => `  CONSTRAINT "${c.conname}" ${c.condef}`);
+  const body = [...colLines, ...conLines].join(',\n');
+  return `CREATE TABLE "${qSchema}"."${qTable}" (\n${body}\n);`;
+}
+
+export async function getIndexes(driver: PgDriver, schema: string, table: string): Promise<IndexInfo[]> {
+  const rows = await driver.query<{
+    index_name: string;
+    index_def: string;
+    index_size: string;
+    is_unique: boolean;
+    is_primary: boolean;
+  }>(
+    `SELECT i.relname AS index_name, pg_get_indexdef(ix.indexrelid) AS index_def,
+            pg_size_pretty(pg_relation_size(ix.indexrelid)) AS index_size,
+            ix.indisunique AS is_unique, ix.indisprimary AS is_primary
+     FROM pg_index ix
+     JOIN pg_class i ON i.oid = ix.indexrelid
+     JOIN pg_class t ON t.oid = ix.indrelid
+     JOIN pg_namespace n ON n.oid = t.relnamespace
+     WHERE n.nspname = $1 AND t.relname = $2
+     ORDER BY ix.indisprimary DESC, ix.indisunique DESC, i.relname`,
+    [schema, table]
+  );
+  return rows.map(r => ({
+    name: r.index_name,
+    definition: r.index_def,
+    size: r.index_size,
+    isUnique: Boolean(r.is_unique),
+    isPrimary: Boolean(r.is_primary),
+  }));
+}
+
+export async function getConstraints(driver: PgDriver, schema: string, table: string): Promise<ConstraintInfo[]> {
+  const oidRows = await driver.query<{ oid: number }>(
+    `SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = $2 AND n.nspname = $1`,
+    [schema, table]
+  );
+  if (!oidRows.length) return [];
+  const rows = await driver.query<{ name: string; type: string; definition: string }>(
+    `SELECT conname AS name,
+            CASE contype WHEN 'p' THEN 'PRIMARY KEY' WHEN 'f' THEN 'FOREIGN KEY' WHEN 'u' THEN 'UNIQUE' WHEN 'c' THEN 'CHECK' END AS type,
+            pg_get_constraintdef(oid) AS definition
+     FROM pg_constraint WHERE conrelid = $1 AND contype IN ('p','f','u','c')
+     ORDER BY contype, conname`,
+    [oidRows[0].oid]
+  );
+  return rows.map(r => ({ name: r.name, type: r.type, definition: r.definition }));
+}
+
+export async function getFKMap(driver: PgDriver, schema: string, table: string): Promise<FKMapEntry[]> {
+  const [out, inc] = await Promise.all([
+    driver.query<{
+      constraint_name: string;
+      column_name: string;
+      foreign_schema: string;
+      foreign_table: string;
+      foreign_column: string;
+    }>(
+      `SELECT kcu.constraint_name, kcu.column_name,
+              ccu.table_schema AS foreign_schema, ccu.table_name AS foreign_table, ccu.column_name AS foreign_column
+       FROM information_schema.key_column_usage kcu
+       JOIN information_schema.table_constraints tc USING (constraint_name, table_schema, table_name)
+       JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name = tc.constraint_name
+       WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = $1 AND tc.table_name = $2
+       ORDER BY kcu.constraint_name, kcu.ordinal_position`,
+      [schema, table]
+    ),
+    driver.query<{
+      constraint_name: string;
+      referencing_schema: string;
+      referencing_table: string;
+      referencing_column: string;
+      referenced_column: string;
+    }>(
+      `SELECT tc.constraint_name, tc.table_schema AS referencing_schema, tc.table_name AS referencing_table,
+              kcu.column_name AS referencing_column, ccu.column_name AS referenced_column
+       FROM information_schema.table_constraints tc
+       JOIN information_schema.key_column_usage kcu USING (constraint_name, table_schema, table_name)
+       JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name = tc.constraint_name
+       WHERE tc.constraint_type = 'FOREIGN KEY' AND ccu.table_schema = $1 AND ccu.table_name = $2
+       ORDER BY tc.table_schema, tc.table_name, tc.constraint_name`,
+      [schema, table]
+    ),
+  ]);
+
+  return [
+    ...out.map(r => ({
+      direction: 'outgoing' as const,
+      constraintName: r.constraint_name,
+      column: r.column_name,
+      foreignSchema: r.foreign_schema,
+      foreignTable: r.foreign_table,
+      foreignColumn: r.foreign_column,
+    })),
+    ...inc.map(r => ({
+      direction: 'incoming' as const,
+      constraintName: r.constraint_name,
+      column: r.referenced_column,
+      foreignSchema: r.referencing_schema,
+      foreignTable: r.referencing_table,
+      foreignColumn: r.referencing_column,
+    })),
+  ];
 }

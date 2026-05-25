@@ -219,6 +219,10 @@ export function getSidebarHtml(params: {
     .history-sql { font-family: var(--vscode-editor-font-family, monospace); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px; }
     .history-meta { display: flex; gap: 8px; font-size: 10px; color: var(--vscode-descriptionForeground); }
 
+    /* Export bar (#23) */
+    .export-bar { display: flex; align-items: center; gap: 4px; padding: 3px 6px; border-bottom: 1px solid var(--vscode-panel-border); background: var(--vscode-editorGroupHeader-tabsBackground); flex-shrink: 0; }
+    .btn-xs { padding: 1px 7px; font-size: 11px; }
+
     /* Placeholder */
     .placeholder { display: flex; align-items: center; justify-content: center; flex: 1; color: var(--vscode-descriptionForeground); font-style: italic; padding: 24px; }
   </style>
@@ -359,6 +363,9 @@ export function getSidebarHtml(params: {
     // History (#18)
     var historyEntries = [];
     var filteredHistory = [];
+
+    // Export (#23) — last successful result
+    var lastResult = null;
 
     // ── Helpers ──────────────────────────────────────────────────────
     function esc(s) {
@@ -526,6 +533,7 @@ export function getSidebarHtml(params: {
       var isExp = !!expanded[nid];
       var colList = cols[connId + ':' + schemaName + ':' + t.name];
       var acts = btnIcon('preview', { connId: connId, schema: schemaName, table: t.name }, 'codicon-open-preview', 'Preview')
+               + btnIcon('open-ddl', { connId: connId, schema: schemaName, table: t.name }, 'codicon-symbol-structure', 'View DDL')
                + btnIcon('copy-name', { name: t.name }, 'codicon-copy', 'Copy name');
       var html = '<div class="tree-row" data-node="' + esc(nid) + '">'
         + '<span class="indent" style="width:48px"></span>'
@@ -648,6 +656,8 @@ export function getSidebarHtml(params: {
           vscode.postMessage({ command: 'deleteConnection', data: { id: d.connId } }); break;
         case 'preview':
           vscode.postMessage({ command: 'previewTable', data: { connId: d.connId, schema: d.schema, table: d.table } }); break;
+        case 'open-ddl':
+          vscode.postMessage({ command: 'openDDL', data: { connId: d.connId, schema: d.schema, table: d.table } }); break;
         case 'copy-name':
           navigator.clipboard.writeText(d.name).catch(function () {}); break;
       }
@@ -837,9 +847,14 @@ export function getSidebarHtml(params: {
 
     function renderResults(result) {
       var section = document.getElementById('results-section');
-      if (!result || result.error || !result.columns || !result.columns.length) { section.classList.add('hidden'); return; }
+      if (!result || result.error || !result.columns || !result.columns.length) { section.classList.add('hidden'); lastResult = null; return; }
       section.classList.remove('hidden');
-      var html = '<table class="result-grid"><thead><tr>';
+      lastResult = result;
+      var html = '<div class="export-bar">'
+        + '<button class="btn btn-secondary btn-xs" id="btn-export-csv"><i class="codicon codicon-export"></i>CSV</button>'
+        + '<button class="btn btn-secondary btn-xs" id="btn-export-json"><i class="codicon codicon-json"></i>JSON</button>'
+        + '</div>';
+      html += '<table class="result-grid"><thead><tr>';
       result.columns.forEach(function (c) { html += '<th>' + esc(c) + '</th>'; });
       html += '</tr></thead><tbody>';
       (result.rows || []).forEach(function (row) {
@@ -854,6 +869,15 @@ export function getSidebarHtml(params: {
       });
       html += '</tbody></table>';
       section.innerHTML = html;
+      var btnCsv = document.getElementById('btn-export-csv');
+      var btnJson = document.getElementById('btn-export-json');
+      if (btnCsv) btnCsv.addEventListener('click', function () { exportResult('csv'); });
+      if (btnJson) btnJson.addEventListener('click', function () { exportResult('json'); });
+    }
+
+    function exportResult(format) {
+      if (!lastResult) return;
+      vscode.postMessage({ command: 'exportResult', data: { format: format, columns: lastResult.columns, rows: lastResult.rows } });
     }
 
     // ── History (#18) ────────────────────────────────────────────────
@@ -958,6 +982,20 @@ export function getSidebarHtml(params: {
         }
         case 'historyLoaded': { historyEntries = msg.data || []; renderHistory(); break; }
         case 'completionsLoaded': { registerCompletions(msg.data); break; }
+        case 'navigateToTable': {
+          var nd = msg.data;
+          switchMainTab('explorer');
+          expanded['c:' + nd.connId] = true;
+          expanded['s:' + nd.connId + ':' + nd.schema] = true;
+          expanded['tg:' + nd.connId + ':' + nd.schema] = true;
+          var tKey = nd.connId + ':' + nd.schema;
+          if (!tables[tKey] && !loadingNodes['tg:' + nd.connId + ':' + nd.schema]) {
+            loadingNodes['tg:' + nd.connId + ':' + nd.schema] = true;
+            vscode.postMessage({ command: 'loadTables', data: { connId: nd.connId, schema: nd.schema } });
+          }
+          renderTree();
+          break;
+        }
       }
     });
 
