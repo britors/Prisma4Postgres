@@ -244,6 +244,19 @@
 
     .export-bar { display: flex; align-items: center; gap: 4px; padding: 3px 6px; border-bottom: 1px solid var(--vscode-panel-border); background: var(--vscode-editorGroupHeader-tabsBackground); flex-shrink: 0; }
     .btn-xs { padding: 1px 7px; font-size: 11px; }
+    .result-grid tr.row-selected { background: var(--vscode-list-activeSelectionBackground) !important; color: var(--vscode-list-activeSelectionForeground); }
+    .result-grid tr { cursor: pointer; }
+    .row-detail-kv { display: flex; flex-direction: column; gap: 6px; }
+    .row-detail-kv-item { display: flex; flex-direction: column; gap: 1px; }
+    .row-detail-kv-key { font-size: 10px; font-weight: 600; color: var(--vscode-descriptionForeground); text-transform: uppercase; letter-spacing: 0.5px; }
+    .row-detail-kv-val { font-size: 12px; font-family: var(--vscode-editor-font-family, monospace); word-break: break-all; white-space: pre-wrap; padding: 2px 4px; border-radius: 2px; background: var(--vscode-input-background); }
+    .activity-table { width: 100%; border-collapse: collapse; }
+    .activity-table th { position: sticky; top: 0; z-index: 1; background: var(--vscode-editorGroupHeader-tabsBackground); padding: 3px 8px; text-align: left; font-weight: 600; border-bottom: 2px solid var(--vscode-panel-border); font-size: 11px; }
+    .activity-table td { padding: 2px 8px; border-bottom: 1px solid rgba(128,128,128,0.1); font-size: 11px; white-space: nowrap; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+    .activity-table tr:hover { background: var(--vscode-list-hoverBackground); }
+    .activity-warn { color: #e8a838; }
+    .activity-danger { color: #f44747; }
+    .activity-btn { padding: 1px 5px; font-size: 10px; cursor: pointer; border: 1px solid var(--vscode-panel-border); border-radius: 2px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
 
     .prisma-scroll { flex: 1; overflow-y: auto; }
     .prisma-section { border-bottom: 1px solid var(--vscode-panel-border); }
@@ -414,6 +427,7 @@
       <button class="tab" data-tab="query"><i class="codicon codicon-file-code"></i>Query</button>
       <button class="tab" data-tab="history"><i class="codicon codicon-history"></i>History</button>
       <button class="tab" data-tab="prisma" id="tab-btn-prisma"><i class="codicon codicon-symbol-class"></i>Prisma</button>
+      <button class="tab" data-tab="activity"><i class="codicon codicon-pulse"></i>Activity</button>
       <div id="table-tab-list" style="display:flex;overflow-x:auto;"></div>
     </div>
 
@@ -426,7 +440,10 @@
       <div class="query-toolbar">
         <select class="conn-select" id="conn-select"><option value="">Select connection…</option></select>
         <button class="btn btn-primary" id="btn-run"><i class="codicon codicon-play"></i>Run</button>
+        <button class="btn btn-secondary hidden" id="btn-cancel"><i class="codicon codicon-stop-circle"></i>Cancel</button>
         <button class="btn btn-secondary" id="btn-explain"><i class="codicon codicon-graph"></i>Explain</button>
+        <div style="flex:1"></div>
+        <div style="display:flex;align-items:center;gap:4px;padding:2px 6px;border-radius:3px;background:var(--vscode-badge-background);font-size:10px;color:var(--vscode-badge-foreground);opacity:0.6;user-select:none">F8 / Ctrl+Enter</div>
       </div>
 
       <!-- Resizable split: editor (top) + results (bottom) -->
@@ -437,8 +454,18 @@
         <div class="query-h-resize" id="query-h-resize"></div>
         <div class="query-results-pane" id="query-results-pane">
           <div class="query-status hidden" id="query-status"></div>
-          <div class="results-section" id="results-section">
-            <div class="results-placeholder" id="results-placeholder">Run a query to see results</div>
+          <div style="display:flex;flex:1;min-height:0;overflow:hidden">
+            <div class="results-section" id="results-section" style="flex:1;overflow:auto">
+              <div class="results-placeholder" id="results-placeholder">Run a query to see results</div>
+            </div>
+            <div id="row-detail-panel" class="hidden" style="width:280px;flex-shrink:0;border-left:1px solid var(--vscode-panel-border);display:flex;flex-direction:column;overflow:hidden">
+              <div style="display:flex;align-items:center;padding:5px 8px;border-bottom:1px solid var(--vscode-panel-border);background:var(--vscode-editorGroupHeader-tabsBackground);font-size:11px;font-weight:600;flex-shrink:0">
+                Row detail
+                <span style="flex:1"></span>
+                <button class="btn-icon" id="row-detail-close" title="Close"><i class="codicon codicon-close"></i></button>
+              </div>
+              <div id="row-detail-body" style="flex:1;overflow:auto;padding:8px"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -494,6 +521,23 @@
       </div>
     </div>
 
+    <!-- Activity panel -->
+    <div class="panel hidden" id="panel-activity">
+      <div class="query-toolbar" style="gap:8px">
+        <span style="font-weight:600;font-size:12px">pg_stat_activity</span>
+        <select class="conn-select" id="activity-conn-select" style="max-width:200px"><option value="">Select connection…</option></select>
+        <button class="btn btn-secondary" id="btn-activity-refresh"><i class="codicon codicon-refresh"></i>Refresh</button>
+        <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer">
+          <input type="checkbox" id="activity-auto-refresh" style="cursor:pointer"> Auto (5s)
+        </label>
+        <span style="flex:1"></span>
+        <span id="activity-status" style="font-size:11px;color:var(--vscode-descriptionForeground)"></span>
+      </div>
+      <div class="results-section" id="activity-results" style="overflow:auto">
+        <div class="results-placeholder">Select a connection and click Refresh</div>
+      </div>
+    </div>
+
     <!-- Table detail panel (shared; content re-rendered per active table tab) -->
     <div class="panel hidden" id="panel-table">
       <div id="table-detail-toolbar" class="tdetail-toolbar">
@@ -501,6 +545,9 @@
         <span class="tdetail-meta" id="table-detail-meta"></span>
         <button class="btn btn-secondary" id="btn-run-select" style="flex-shrink:0">
           <i class="codicon codicon-play"></i>Run SELECT
+        </button>
+        <button class="btn btn-secondary" id="btn-copy-prisma-model" style="flex-shrink:0" title="Copy Prisma model to clipboard">
+          <i class="codicon codicon-symbol-class"></i>Copy model
         </button>
       </div>
       <div class="tdetail-wrap" id="table-detail-content"></div>
@@ -975,6 +1022,17 @@
       if (rowEl && rowEl.dataset.node) toggleNode(rowEl.dataset.node);
     });
 
+    document.getElementById('tree').addEventListener('dblclick', function (e) {
+      var rowEl = e.target.closest('.tree-row[data-node]');
+      if (!rowEl) return;
+      var nid = rowEl.dataset.node;
+      // nid format: t:connId:schema:table or v:connId:schema:table
+      if (nid && (nid.startsWith('t:') || nid.startsWith('v:'))) {
+        var parts = nid.split(':');
+        if (parts.length >= 4) openTableTab(parts[1], parts[2], parts.slice(3).join(':'));
+      }
+    });
+
     function handleTreeAction(el) {
       var d = el.dataset;
       switch (d.action) {
@@ -1023,6 +1081,7 @@
       if (tab === 'query') { setTimeout(ensureMonacoReady, 30); renderQueryTabs(); renderConnSelect(); if (window.__initQuerySplit) window.__initQuerySplit(); }
       if (tab === 'history') { if (!historyEntries.length) api.send('loadHistory'); renderHistory(); }
       if (tab === 'prisma') { renderPrismaConnSelect(); renderPrismaSchemaInfo(); renderPrismaModels(); }
+      if (tab === 'activity') { renderActivityConnSelect(); }
       if (isTableTab) { activeTableTabId = tab; renderActiveTableDetail(); }
     }
 
@@ -1388,11 +1447,14 @@
       if (tabEl) switchQTab(tabEl.dataset.qtab);
     });
 
-    document.getElementById('btn-new-tab').addEventListener('click', function () {
+    function newQTab() {
       var n = tabs.length + 1;
       var t = { id: 'qtab-' + Date.now(), name: 'Query ' + n, sql: '', connId: activeQTab().connId, result: null };
-      tabs.push(t); switchQTab(t.id);
-    });
+      tabs.push(t);
+      if (persisted.tab !== 'query') switchMainTab('query');
+      switchQTab(t.id);
+    }
+    document.getElementById('btn-new-tab').addEventListener('click', newQTab);
 
     function switchQTab(id) {
       if (monacoEditor && activeQTabId) activeQTab().sql = monacoEditor.getValue();
@@ -1463,6 +1525,7 @@
           renderLineHighlight: 'all',
         });
         monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, runQuery);
+        monacoEditor.addCommand(monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF, formatSQL);
         monacoEditor.onDidChangeModelContent(function () { activeQTab().sql = monacoEditor.getValue(); });
         if (tab.connId) api.send('loadCompletions', { connId: tab.connId });
       });
@@ -1472,6 +1535,8 @@
     document.getElementById('btn-run').addEventListener('click', runQuery);
     document.getElementById('btn-explain').addEventListener('click', runExplain);
 
+    var runningConnId = null;
+
     function runQuery() {
       var tab = activeQTab();
       if (!tab.connId) { setStatus('No connection selected.', true); return; }
@@ -1479,10 +1544,22 @@
         ? (monacoEditor.getModel().getValueInRange(monacoEditor.getSelection()).trim() || monacoEditor.getValue().trim())
         : tab.sql.trim();
       if (!sql) return;
+      runningConnId = tab.connId;
       document.getElementById('btn-run').disabled = true;
+      document.getElementById('btn-cancel').classList.remove('hidden');
       setStatus('Executing…', false);
       api.send('executeQuery', { connId: tab.connId, sql: sql, tabId: tab.id });
     }
+
+    function stopRunning() {
+      document.getElementById('btn-run').disabled = false;
+      document.getElementById('btn-cancel').classList.add('hidden');
+      runningConnId = null;
+    }
+
+    document.getElementById('btn-cancel').addEventListener('click', function () {
+      if (runningConnId) api.send('cancelQuery', { connId: runningConnId });
+    });
 
     function runExplain() {
       var tab = activeQTab();
@@ -1512,6 +1589,7 @@
 
     function renderResults(result) {
       var section = document.getElementById('results-section');
+      closeRowDetail();
       if (!result || result.error || !result.columns || !result.columns.length) {
         showResultsPlaceholder(result && result.error ? result.error : 'No rows returned');
         lastResult = null; return;
@@ -1520,12 +1598,16 @@
       var html = '<div class="export-bar">'
         + '<button class="btn btn-secondary btn-xs" id="btn-export-csv"><i class="codicon codicon-export"></i>CSV</button>'
         + '<button class="btn btn-secondary btn-xs" id="btn-export-json"><i class="codicon codicon-json"></i>JSON</button>'
+        + '<span style="width:8px"></span>'
+        + '<button class="btn btn-secondary btn-xs" id="btn-copy-csv"><i class="codicon codicon-clippy"></i>CSV</button>'
+        + '<button class="btn btn-secondary btn-xs" id="btn-copy-json"><i class="codicon codicon-clippy"></i>JSON</button>'
+        + '<button class="btn btn-secondary btn-xs" id="btn-copy-md"><i class="codicon codicon-clippy"></i>MD</button>'
         + '</div>';
-      html += '<table class="result-grid"><thead><tr>';
+      html += '<table class="result-grid" id="result-table"><thead><tr>';
       result.columns.forEach(function (c) { html += '<th>' + esc(c) + '</th>'; });
       html += '</tr></thead><tbody>';
-      (result.rows || []).forEach(function (row) {
-        html += '<tr>';
+      (result.rows || []).forEach(function (row, idx) {
+        html += '<tr data-row-idx="' + idx + '">';
         result.columns.forEach(function (c) {
           var v = row[c];
           if (v === null || v === undefined) { html += '<td><span class="result-null">NULL</span></td>'; }
@@ -1536,11 +1618,73 @@
       });
       html += '</tbody></table>';
       section.innerHTML = html;
-      var btnCsv = document.getElementById('btn-export-csv');
-      var btnJson = document.getElementById('btn-export-json');
-      if (btnCsv) btnCsv.addEventListener('click', function () { exportResult('csv'); });
-      if (btnJson) btnJson.addEventListener('click', function () { exportResult('json'); });
+      document.getElementById('btn-export-csv').addEventListener('click', function () { exportResult('csv'); });
+      document.getElementById('btn-export-json').addEventListener('click', function () { exportResult('json'); });
+      document.getElementById('btn-copy-csv').addEventListener('click', function () { copyResult('csv'); });
+      document.getElementById('btn-copy-json').addEventListener('click', function () { copyResult('json'); });
+      document.getElementById('btn-copy-md').addEventListener('click', function () { copyResult('md'); });
+      // row click → detail panel
+      section.querySelectorAll('#result-table tbody tr').forEach(function (tr) {
+        tr.addEventListener('click', function () { showRowDetail(result, parseInt(tr.dataset.rowIdx, 10), tr); });
+      });
     }
+
+    function copyResult(format) {
+      if (!lastResult) return;
+      var text = '';
+      if (format === 'csv') {
+        text = lastResult.columns.join(',') + '\n';
+        lastResult.rows.forEach(function (row) {
+          text += lastResult.columns.map(function (c) {
+            var v = row[c];
+            if (v === null || v === undefined) return '';
+            var s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+            return s.includes(',') || s.includes('"') || s.includes('\n') ? '"' + s.replace(/"/g, '""') + '"' : s;
+          }).join(',') + '\n';
+        });
+      } else if (format === 'json') {
+        text = JSON.stringify(lastResult.rows, null, 2);
+      } else if (format === 'md') {
+        var sep = '| ' + lastResult.columns.map(function (c) { return c.replace(/\|/g, '\\|'); }).join(' | ') + ' |';
+        var div = '| ' + lastResult.columns.map(function () { return '---'; }).join(' | ') + ' |';
+        var rows = lastResult.rows.map(function (row) {
+          return '| ' + lastResult.columns.map(function (c) {
+            var v = row[c];
+            var s = v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
+            return s.replace(/\|/g, '\\|');
+          }).join(' | ') + ' |';
+        });
+        text = [sep, div].concat(rows).join('\n');
+      }
+      navigator.clipboard.writeText(text).then(function () { showToast('Copied to clipboard'); }).catch(function () {});
+    }
+
+    // ── Row detail panel ───────────────────────────────────────────────────
+    function showRowDetail(result, rowIdx, trEl) {
+      var panel = document.getElementById('row-detail-panel');
+      var body  = document.getElementById('row-detail-body');
+      var row = result.rows[rowIdx];
+      document.querySelectorAll('#result-table tbody tr').forEach(function (r) { r.classList.remove('row-selected'); });
+      if (trEl) trEl.classList.add('row-selected');
+      var html = '<div class="row-detail-kv">';
+      result.columns.forEach(function (c) {
+        var v = row[c];
+        var display = v === null || v === undefined ? '<span class="result-null">NULL</span>'
+          : typeof v === 'object' ? esc(JSON.stringify(v, null, 2)) : esc(String(v));
+        html += '<div class="row-detail-kv-item"><div class="row-detail-kv-key">' + esc(c) + '</div>'
+          + '<div class="row-detail-kv-val">' + display + '</div></div>';
+      });
+      html += '</div>';
+      body.innerHTML = html;
+      panel.classList.remove('hidden');
+    }
+
+    function closeRowDetail() {
+      var panel = document.getElementById('row-detail-panel');
+      if (panel) panel.classList.add('hidden');
+    }
+
+    document.getElementById('row-detail-close').addEventListener('click', closeRowDetail);
 
     function exportResult(format) {
       if (!lastResult) return;
@@ -1886,7 +2030,7 @@
         case 'queryResult': {
           var tab = tabs.find(function (t) { return t.id === d.tabId; });
           if (tab) tab.result = d;
-          document.getElementById('btn-run').disabled = false;
+          stopRunning();
           if (!d.tabId || d.tabId === activeQTabId) {
             if (d.error) {
               setStatus(d.error, true);
@@ -1901,7 +2045,7 @@
         }
         case 'explainResult': {
           document.getElementById('btn-explain').disabled = false;
-          document.getElementById('btn-run').disabled = false;
+          stopRunning();
           var xtab = tabs.find(function(t) { return t.id === d.tabId; });
           if (xtab) xtab.result = d.error ? { error: d.error } : { isPlan: true };
           if (!d.tabId || d.tabId === activeQTabId) {
@@ -1953,6 +2097,40 @@
           renderTree(); break;
         case 'driftResult':
           showDrift(d); break;
+        case 'activityLoaded': {
+          var statusEl2 = document.getElementById('activity-status');
+          var resultsEl = document.getElementById('activity-results');
+          if (!resultsEl) break;
+          if (d.error) {
+            if (statusEl2) statusEl2.textContent = 'Error';
+            resultsEl.innerHTML = '<div class="results-placeholder">' + esc(d.error) + '</div>';
+            break;
+          }
+          if (statusEl2) statusEl2.textContent = d.rows.length + ' rows · ' + new Date().toLocaleTimeString();
+          if (!d.rows.length) { resultsEl.innerHTML = '<div class="results-placeholder">No active connections</div>'; break; }
+          var cols2 = ['pid','usename','application_name','state','wait_event','duration','query'];
+          var ahtml = '<table class="activity-table"><thead><tr>' + cols2.map(function (c) { return '<th>' + c + '</th>'; }).join('') + '<th></th></tr></thead><tbody>';
+          d.rows.forEach(function (row) {
+            var dur = parseFloat(row.duration) || 0;
+            var cls = dur > 30 ? 'activity-danger' : dur > 5 ? 'activity-warn' : '';
+            ahtml += '<tr class="' + cls + '">';
+            cols2.forEach(function (c) {
+              var v = row[c];
+              var s = v === null || v === undefined ? '' : String(v);
+              ahtml += '<td title="' + esc(s) + '">' + esc(s.length > 40 ? s.slice(0, 40) + '…' : s) + '</td>';
+            });
+            ahtml += '<td><button class="activity-btn" data-pid="' + esc(String(row.pid)) + '" data-conn-id="' + esc(d.connId) + '">Cancel</button></td>';
+            ahtml += '</tr>';
+          });
+          ahtml += '</tbody></table>';
+          resultsEl.innerHTML = ahtml;
+          resultsEl.querySelectorAll('.activity-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+              api.send('cancelActivity', { connId: btn.dataset.connId, pid: parseInt(btn.dataset.pid, 10) });
+            });
+          });
+          break;
+        }
         case 'tableDetailLoaded': {
           var td = tableTabs.find(function(t) {
             return t.connId === d.connId && t.schema === d.schema && t.tableName === d.tableName;
@@ -1968,11 +2146,134 @@
       }
     });
 
+    // ── SQL formatter (#47) ────────────────────────────────────────────────
+    function formatSQL() {
+      if (!monacoEditor) return;
+      var sql = monacoEditor.getValue();
+      var kws = ['SELECT','FROM','WHERE','JOIN','LEFT JOIN','RIGHT JOIN','INNER JOIN','OUTER JOIN','CROSS JOIN',
+        'ON','AND','OR','NOT','IN','BETWEEN','LIKE','IS','NULL','AS','ORDER BY','GROUP BY','HAVING',
+        'LIMIT','OFFSET','INSERT INTO','VALUES','UPDATE','SET','DELETE FROM','CREATE TABLE','ALTER TABLE',
+        'DROP TABLE','CREATE INDEX','UNION','UNION ALL','EXCEPT','INTERSECT','WITH','CASE','WHEN','THEN',
+        'ELSE','END','DISTINCT','EXISTS','COUNT','SUM','AVG','MIN','MAX','COALESCE','NULLIF'];
+      // tokenize preserving strings and identifiers
+      var out = sql;
+      // uppercase keywords (simple pass — not perfect but good for common SQL)
+      kws.forEach(function (kw) {
+        var re = new RegExp('\\b' + kw.replace(/ /g, '\\s+') + '\\b', 'gi');
+        out = out.replace(re, kw);
+      });
+      // normalize whitespace around commas in SELECT list (keep newlines intentional)
+      out = out.replace(/[ \t]*,[ \t]*/g, ', ');
+      // add newline before major clauses
+      var clauses = ['FROM','WHERE','AND','OR','JOIN','LEFT JOIN','RIGHT JOIN','INNER JOIN','OUTER JOIN',
+        'ON','ORDER BY','GROUP BY','HAVING','LIMIT','OFFSET','UNION ALL','UNION','EXCEPT','INTERSECT'];
+      clauses.forEach(function (c) {
+        out = out.replace(new RegExp('([^\\n])\\s+\\b(' + c + ')\\b', 'gi'), function (m, pre, kw) {
+          return pre + '\n' + kw.toUpperCase();
+        });
+      });
+      // clean up leading/trailing whitespace per line
+      out = out.split('\n').map(function (l) { return l.trimEnd(); }).join('\n').trim();
+      monacoEditor.setValue(out);
+      activeQTab().sql = out;
+    }
+
+    // ── Activity panel (#53) ───────────────────────────────────────────────
+    var activityTimer = null;
+
+    function renderActivityConnSelect() {
+      var sel = document.getElementById('activity-conn-select');
+      if (!sel) return;
+      sel.innerHTML = '<option value="">Select connection…</option>'
+        + connections.map(function (c) {
+            var s = statuses[c.id] || 'disconnected';
+            return '<option value="' + esc(c.id) + '">' + esc(c.label) + (s === 'connected' ? ' ●' : ' ○') + '</option>';
+          }).join('');
+    }
+
+    function loadActivity() {
+      var sel = document.getElementById('activity-conn-select');
+      if (!sel || !sel.value) return;
+      document.getElementById('activity-status').textContent = 'Loading…';
+      api.send('loadActivity', { connId: sel.value });
+    }
+
+    document.getElementById('btn-activity-refresh').addEventListener('click', loadActivity);
+
+    document.getElementById('activity-conn-select').addEventListener('change', function () {
+      if (this.value) loadActivity();
+    });
+
+    document.getElementById('activity-auto-refresh').addEventListener('change', function () {
+      clearInterval(activityTimer);
+      if (this.checked) activityTimer = setInterval(loadActivity, 5000);
+    });
+
+    // ── Copy Prisma model (#55) ────────────────────────────────────────────
+    var PG_TO_PRISMA = {
+      'int2': 'Int', 'int4': 'Int', 'int8': 'BigInt', 'integer': 'Int', 'smallint': 'Int',
+      'bigint': 'BigInt', 'serial': 'Int', 'bigserial': 'BigInt', 'smallserial': 'Int',
+      'float4': 'Float', 'float8': 'Float', 'real': 'Float', 'double precision': 'Float',
+      'numeric': 'Decimal', 'decimal': 'Decimal', 'money': 'Decimal',
+      'bool': 'Boolean', 'boolean': 'Boolean',
+      'text': 'String', 'varchar': 'String', 'character varying': 'String',
+      'char': 'String', 'character': 'String', 'bpchar': 'String', 'citext': 'String',
+      'uuid': 'String', 'json': 'Json', 'jsonb': 'Json',
+      'timestamp': 'DateTime', 'timestamptz': 'DateTime', 'timestamp without time zone': 'DateTime',
+      'timestamp with time zone': 'DateTime', 'date': 'DateTime', 'time': 'String', 'timetz': 'String',
+      'bytea': 'Bytes', 'bit': 'String', 'inet': 'String', 'cidr': 'String', 'macaddr': 'String',
+    };
+
+    function toPrismaType(pgType) {
+      var base = pgType.replace(/\(.*\)/, '').trim().toLowerCase();
+      return PG_TO_PRISMA[base] || 'String';
+    }
+
+    function toPascalCase(s) {
+      return s.split(/[_\s]+/).map(function (w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join('');
+    }
+
+    function generatePrismaModel(tab) {
+      var d = tab.data;
+      var modelName = toPascalCase(tab.tableName);
+      var needsMap = modelName.toLowerCase() !== tab.tableName.toLowerCase();
+      var lines = ['model ' + modelName + ' {'];
+      d.columns.forEach(function (c) {
+        var prismaType = toPrismaType(c.dataType);
+        var attrs = [];
+        if (c.isPrimaryKey) {
+          attrs.push('@id');
+          if (c.columnDefault && c.columnDefault.toLowerCase().includes('nextval')) attrs.push('@default(autoincrement())');
+          else if (c.columnDefault && c.columnDefault.toLowerCase().includes('uuid')) attrs.push('@default(uuid())');
+          else if (c.columnDefault && c.columnDefault.toLowerCase().includes('now')) attrs.push('@default(now())');
+        } else if (c.columnDefault) {
+          if (c.columnDefault.toLowerCase().includes('now()')) attrs.push('@default(now())');
+        }
+        var fieldName = c.name.replace(/[^a-zA-Z0-9_]/g, '_');
+        if (fieldName !== c.name) attrs.push('@map("' + c.name + '")');
+        var line = '  ' + fieldName + (c.isNullable ? '?' : '') + '  ' + prismaType + (c.isNullable ? '?' : '');
+        if (attrs.length) line += '  ' + attrs.join(' ');
+        lines.push(line);
+      });
+      if (needsMap) lines.push('', '  @@map("' + tab.tableName + '")');
+      lines.push('}');
+      return lines.join('\n');
+    }
+
+    document.getElementById('btn-copy-prisma-model').addEventListener('click', function () {
+      var tab = tableTabs.find(function (t) { return t.id === activeTableTabId; });
+      if (!tab || !tab.data) { showToast('Table not loaded yet'); return; }
+      var model = generatePrismaModel(tab);
+      navigator.clipboard.writeText(model).then(function () { showToast('Prisma model copied to clipboard'); }).catch(function () {});
+    });
+
     // ── Global keyboard shortcuts ──────────────────────────────────────────
     document.addEventListener('keydown', function (e) {
       if (e.key === 'F8' && persisted.tab === 'query') {
-        e.preventDefault();
-        runQuery();
+        e.preventDefault(); runQuery();
+      }
+      if (e.key === 't' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+        e.preventDefault(); newQTab();
       }
     });
 

@@ -263,15 +263,16 @@ export function registerIpc(win: BrowserWindow): void {
 
       case 'executeQuery': {
         const { connId, sql, tabId } = data as { connId: string; sql: string; tabId: string };
-        const driver = connManager.getDriver(connId);
+        let driver = connManager.getDriver(connId);
         if (!driver) {
           send('queryResult', { tabId, error: 'Not connected. Please connect first.' });
           return;
         }
         const conn = getConnection(connId);
         const start = Date.now();
+        const runQuery = async () => driver!.query(sql);
         try {
-          const rows = await driver.query(sql);
+          const rows = await runQuery();
           const durationMs = Date.now() - start;
           const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
           send('queryResult', { tabId, columns, rows, durationMs });
@@ -280,11 +281,38 @@ export function registerIpc(win: BrowserWindow): void {
             timestamp: Date.now(), durationMs, rowCount: rows.length,
           });
         } catch (err) {
-          const durationMs = Date.now() - start;
           const msg = String(err);
-          const isTimeout = /canceling statement due to statement timeout/i.test(msg);
-          send('queryResult', { tabId, error: msg, durationMs, isTimeout });
+          const isConnErr = /connection.*terminated|connection.*closed|connection.*reset|ECONNRESET|ECONNREFUSED|pool.*destroyed/i.test(msg);
+          if (isConnErr) {
+            // auto-reconnect once (#54)
+            try {
+              send('reconnect', { connId });
+              const password = getPassword(connId) ?? '';
+              await connManager.connect(connId, password, getSettings().queryTimeout);
+              send('connectionStatus', { id: connId, status: 'connected' });
+              driver = connManager.getDriver(connId);
+              const rows = await runQuery();
+              const durationMs = Date.now() - start;
+              const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
+              send('queryResult', { tabId, columns, rows, durationMs });
+              addHistory({ sql, connId, connLabel: conn?.label ?? connId, timestamp: Date.now(), durationMs, rowCount: rows.length });
+            } catch (err2) {
+              send('connectionStatus', { id: connId, status: 'error' });
+              send('queryResult', { tabId, error: String(err2), durationMs: Date.now() - start, isTimeout: false });
+            }
+          } else {
+            const durationMs = Date.now() - start;
+            const isTimeout = /canceling statement due to statement timeout/i.test(msg);
+            send('queryResult', { tabId, error: msg, durationMs, isTimeout });
+          }
         }
+        break;
+      }
+
+      case 'cancelQuery': {
+        const { connId } = data as { connId: string };
+        const driver = connManager.getDriver(connId);
+        if (driver) await driver.cancelActive().catch(() => {});
         break;
       }
 
@@ -352,6 +380,37 @@ export function registerIpc(win: BrowserWindow): void {
       }
 
 
+
+      // ── Activity viewer (#53) ─────────────────────────────────────────────
+
+      case 'loadActivity': {
+        const { connId } = data as { connId: string };
+        const driver = connManager.getDriver(connId);
+        if (!driver) { send('activityLoaded', { connId, error: 'Not connected.' }); break; }
+        try {
+          const rows = await driver.query<Record<string, unknown>>(`
+            SELECT pid, usename, application_name, state, wait_event_type, wait_event,
+              EXTRACT(EPOCH FROM (now() - query_start))::numeric(10,1) AS duration,
+              LEFT(query, 200) AS query
+            FROM pg_stat_activity
+            WHERE datname = current_database()
+              AND pid <> pg_backend_pid()
+            ORDER BY duration DESC NULLS LAST
+          `);
+          send('activityLoaded', { connId, rows });
+        } catch (err) {
+          send('activityLoaded', { connId, error: String(err) });
+        }
+        break;
+      }
+
+      case 'cancelActivity': {
+        const { connId, pid } = data as { connId: string; pid: number };
+        const driver = connManager.getDriver(connId);
+        if (!driver) break;
+        try { await driver.query('SELECT pg_cancel_backend($1)', [pid]); } catch { /* best-effort */ }
+        break;
+      }
 
       // ── Export ────────────────────────────────────────────────────────────
 

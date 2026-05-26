@@ -40,7 +40,7 @@ export class ConnectionManager {
     if (!managed) throw new Error('Connection not registered');
 
     managed.status = 'connecting';
-    const driver = new PgDriver(managed.conn, password, statementTimeout);
+    const driver = new PgDriver(managed.conn, password, statementTimeout, `p4p-${id}`);
     try {
       await driver.connect();
       managed.driver = driver;
