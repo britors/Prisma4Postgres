@@ -27,8 +27,6 @@ jobs:
 
       - name: Build and package
         run: npm run package
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload installer to Release
         uses: softprops/action-gh-release@v2
@@ -53,8 +51,6 @@ jobs:
 
       - name: Build and package
         run: npm run package
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload AppImage to Release
         uses: softprops/action-gh-release@v2
