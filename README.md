@@ -219,6 +219,41 @@ npm run package
 
 Produces an **AppImage** (Linux), **dmg** (macOS), or **NSIS installer** (Windows) in `dist/`.
 
+### Build and install as Flatpak
+
+> Requires [flatpak-builder](https://docs.flatpak.org/en/latest/flatpak-builder.html) and the `flatpak-node-generator` tool.
+
+**1. Install build tools**
+
+```bash
+pip install flatpak-node-generator
+flatpak install flathub org.freedesktop.Sdk//23.08 org.freedesktop.Platform//23.08
+flatpak install flathub org.electronjs.Electron2.BaseApp//23.08
+flatpak install flathub org.freedesktop.Sdk.Extension.node20//23.08
+```
+
+**2. Generate offline npm source list**
+
+```bash
+npm run flatpak:gen-sources
+# produces flatpak/generated-sources.json
+```
+
+**3. Build and install**
+
+```bash
+npm run flatpak:build
+flatpak-builder --user --install --force-clean build-dir flatpak/br.com.w3ti.Prisma4Postgres.yml
+```
+
+**4. Run**
+
+```bash
+flatpak run br.com.w3ti.Prisma4Postgres
+```
+
+The Flatpak manifest lives in [`flatpak/br.com.w3ti.Prisma4Postgres.yml`](flatpak/br.com.w3ti.Prisma4Postgres.yml).
+
 ---
 
 ## Tech Stack
