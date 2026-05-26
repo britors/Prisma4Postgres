@@ -12,6 +12,9 @@
   <a href="https://github.com/britors/Prisma4Postgres/issues">
     <img src="https://img.shields.io/github/issues/britors/Prisma4Postgres" alt="Issues">
   </a>
+  <a href="https://aur.archlinux.org/packages/prisma4postgres-bin">
+    <img src="https://img.shields.io/aur/version/prisma4postgres-bin?label=AUR&color=b44fff" alt="AUR">
+  </a>
 </p>
 
 **Prisma4Postgres** is a standalone Electron desktop app for exploring and managing PostgreSQL databases. No VS Code required, no CLI wrappers, no config files — just connect and explore.
@@ -31,7 +34,9 @@
 | Platform | File |
 |---|---|
 | 🪟 Windows | `.exe` (NSIS installer) |
-| 🐧 Linux | `.AppImage` |
+| 🐧 Linux (Debian/Ubuntu) | `.deb` |
+| 🐧 Linux (Fedora/RHEL) | `.rpm` |
+| 🐧 Linux (Arch/Manjaro) | [AUR: prisma4postgres-bin](https://aur.archlinux.org/packages/prisma4postgres-bin) |
 
 ---
 
