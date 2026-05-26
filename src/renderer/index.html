@@ -339,7 +339,6 @@
       Explorer
       <div class="sidebar-header-actions">
         <button class="btn-icon" id="btn-add-conn" title="Add Connection"><i class="codicon codicon-add"></i></button>
-        <button class="btn-icon" id="btn-open-create-table" title="Create Table"><i class="codicon codicon-table"></i></button>
       </div>
     </div>
 
@@ -760,7 +759,10 @@
                     : isConn ? (isExp ? 'codicon-chevron-down' : 'codicon-chevron-right') : '';
       var acts = '';
       if (status === 'disconnected' || status === 'error') acts += btnIcon('connect', { connId: conn.id }, 'codicon-plug', 'Connect');
-      else if (status === 'connected') acts += btnIcon('disconnect', { connId: conn.id }, 'codicon-debug-disconnect', 'Disconnect');
+      else if (status === 'connected') {
+        acts += btnIcon('disconnect', { connId: conn.id }, 'codicon-debug-disconnect', 'Disconnect');
+        acts += btnIcon('create-table-for-conn', { connId: conn.id }, 'codicon-table', 'Create Table');
+      }
       acts += btnIcon('edit-conn', { connId: conn.id }, 'codicon-edit', 'Edit');
       acts += btnIcon('delete-conn', { connId: conn.id }, 'codicon-trash', 'Delete', true);
 
@@ -969,8 +971,19 @@
       var rowEl = e.target.closest('.tree-row[data-node]');
       if (!rowEl) return;
       var nid = rowEl.dataset.node;
-      // nid format: t:connId:schema:table or v:connId:schema:table
-      if (nid && (nid.startsWith('t:') || nid.startsWith('v:'))) {
+      if (!nid) return;
+      // connection node: c:connId
+      if (nid.startsWith('c:')) {
+        var connId = nid.slice(2);
+        var st = statuses[connId] || 'disconnected';
+        if (st === 'disconnected' || st === 'error') {
+          statuses[connId] = 'connecting'; renderTree();
+          api.send('connect', { connId: connId });
+        }
+        return;
+      }
+      // table/view node: t:connId:schema:table or v:connId:schema:table
+      if (nid.startsWith('t:') || nid.startsWith('v:')) {
         var parts = nid.split(':');
         if (parts.length >= 4) openTableTab(parts[1], parts[2], parts.slice(3).join(':'));
       }
@@ -992,6 +1005,8 @@
           api.send('deleteConnection', { id: d.connId }); break;
         case 'open-table-detail':
           openTableTab(d.connId, d.schema, d.table); break;
+        case 'create-table-for-conn':
+          openCreateTablePanel(d.connId); break;
         case 'open-ddl':
           api.send('openDDL', { connId: d.connId, schema: d.schema, table: d.table }); break;
         case 'copy-name':
@@ -2054,13 +2069,15 @@
 
     var ctColumns = [];
     var ctColId = 0;
+    var ctPresetConnId = null;
 
     function ctNewCol(isPk) {
       return { id: ++ctColId, name: isPk ? 'id' : '', type: isPk ? 'serial' : 'varchar', length: isPk ? '' : '255', nullable: false, defVal: '', pk: !!isPk };
     }
 
-    function openCreateTablePanel() {
+    function openCreateTablePanel(connId) {
       // reset state each time
+      ctPresetConnId = connId || null;
       ctColumns = [ctNewCol(true), ctNewCol(false)];
       ctColumns[1].name = 'name';
 
@@ -2089,10 +2106,11 @@
     }
 
     function ctGetSchemas() {
+      var src = ctPresetConnId ? [ctPresetConnId] : Object.keys(schemas);
       var list = [];
-      Object.keys(schemas).forEach(function (connId) {
+      src.forEach(function (connId) {
         (schemas[connId] || []).forEach(function (s) {
-          if (!list.includes(s)) list.push(s);
+          if (!list.find(function (x) { return x === s.name; })) list.push(s.name);
         });
       });
       return list.length ? list : ['public'];
@@ -2165,7 +2183,8 @@
       var connOpts = '<option value="">Select connection…</option>'
         + connections.map(function (c) {
             var s = statuses[c.id] || 'disconnected';
-            return '<option value="' + esc(c.id) + '">' + esc(c.label) + (s === 'connected' ? ' ●' : ' ○') + '</option>';
+            var sel = ctPresetConnId === c.id ? ' selected' : '';
+            return '<option value="' + esc(c.id) + '"' + sel + '>' + esc(c.label) + (s === 'connected' ? ' ●' : ' ○') + '</option>';
           }).join('');
 
       wrap.innerHTML = '<div class="create-table-row">'
@@ -2221,8 +2240,6 @@
         document.getElementById('ct-execute').disabled = true;
       });
     }
-
-    document.getElementById('btn-open-create-table').addEventListener('click', openCreateTablePanel);
 
     // listen for CREATE TABLE result
     // (handled in the queryResult case — tabId === '__ct__')
