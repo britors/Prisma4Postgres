@@ -228,7 +228,7 @@ Passwords are encrypted with `electron.safeStorage` and stored separately in `us
 
 ### Prerequisites
 
-- Node.js 20+ (via [nvm](https://github.com/nvm-sh/nvm) recommended)
+- Node.js 24+ (via [nvm](https://github.com/nvm-sh/nvm) recommended)
 - npm
 
 ### Setup
@@ -267,8 +267,8 @@ Produces an **AppImage** (Linux), **dmg** (macOS), or **NSIS installer** (Window
 
 | Layer | Technology |
 |---|---|
-| Shell | Electron 29 |
-| Language | TypeScript 5 |
+| Shell | Electron 42 |
+| Language | TypeScript 6 |
 | DB driver | node-postgres (`pg`) |
 | SQL editor | Monaco Editor 0.45 (CDN) |
 | Icons | [OpenBase.Icons](https://github.com/britors/OpenBase.Icons) style (inline SVG) |
