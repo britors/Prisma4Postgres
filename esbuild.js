@@ -30,6 +30,11 @@ function copyAssets() {
     fs.copyFileSync('src/renderer/about.html', 'out/renderer/about.html');
   }
 
+  // Splash HTML
+  if (fs.existsSync('src/renderer/splash.html')) {
+    fs.copyFileSync('src/renderer/splash.html', 'out/renderer/splash.html');
+  }
+
   // Codicons (local copy so no CDN dependency)
   const codiDir = path.join('node_modules', '@vscode', 'codicons', 'dist');
   if (fs.existsSync(codiDir)) {

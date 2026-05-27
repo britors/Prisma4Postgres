@@ -25,6 +25,28 @@ function saveBounds(win: BrowserWindow): void {
   } catch { /* best-effort */ }
 }
 
+export function createSplashWindow(): BrowserWindow {
+  const splash = new BrowserWindow({
+    width: 380,
+    height: 220,
+    frame: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    center: true,
+    title: 'Prisma4Postgres',
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  splash.setMenu(null);
+  splash.loadFile(path.join(__dirname, '../renderer/splash.html'));
+  return splash;
+}
+
 export function createMainWindow(): BrowserWindow {
   const bounds = loadBounds();
 
@@ -32,6 +54,7 @@ export function createMainWindow(): BrowserWindow {
     ...bounds,
     minWidth: 900,
     minHeight: 600,
+    show: false,
     title: 'Prisma4Postgres',
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),

@@ -1,5 +1,5 @@
 import { app, BrowserWindow } from 'electron';
-import { createMainWindow } from './window';
+import { createMainWindow, createSplashWindow } from './window';
 import { registerIpc } from './ipc';
 import { createMenu } from './menu';
 
@@ -18,9 +18,20 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
+    const splash = createSplashWindow();
     const win = createMainWindow();
     registerIpc(win);
     createMenu(win);
+
+    const splashStart = Date.now();
+    win.once('ready-to-show', () => {
+      const elapsed = Date.now() - splashStart;
+      const remaining = Math.max(0, 1500 - elapsed);
+      setTimeout(() => {
+        splash.destroy();
+        win.show();
+      }, remaining);
+    });
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
