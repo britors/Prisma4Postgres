@@ -742,6 +742,7 @@ export function registerIpc(win: BrowserWindow): void {
             driver.query<Record<string, unknown>>(`
               SELECT n.nspname AS schema, c.relname AS table,
                 pg_size_pretty(pg_total_relation_size(c.oid)) AS total_size,
+                pg_total_relation_size(c.oid) AS raw_bytes,
                 s.n_live_tup
               FROM pg_class c
               JOIN pg_namespace n ON n.oid = c.relnamespace
