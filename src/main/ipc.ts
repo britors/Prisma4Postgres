@@ -698,6 +698,81 @@ export function registerIpc(win: BrowserWindow): void {
         break;
       }
 
+      // ── Dashboard ─────────────────────────────────────────────────────────
+
+      case 'loadDashboard': {
+        const { connId } = data as { connId: string };
+        const driver = connManager.getDriver(connId);
+        if (!driver) { send('dashboardLoaded', { connId, error: 'Not connected.' }); break; }
+        try {
+          const [serverRows, dbRows, connRows, perfRows, tableRows] = await Promise.all([
+            driver.query<Record<string, unknown>>(`
+              SELECT
+                split_part(version(), ' ', 2) AS pg_version,
+                pg_postmaster_start_time() AS start_time,
+                EXTRACT(EPOCH FROM (now() - pg_postmaster_start_time()))::int AS uptime_sec,
+                inet_server_addr()::text AS host,
+                inet_server_port()::text AS port
+            `),
+            driver.query<Record<string, unknown>>(`
+              SELECT
+                current_database() AS db_name,
+                pg_size_pretty(pg_database_size(current_database())) AS db_size,
+                pg_encoding_to_char(encoding) AS encoding,
+                datcollate AS collation
+              FROM pg_database WHERE datname = current_database()
+            `),
+            driver.query<Record<string, unknown>>(`
+              SELECT
+                count(*)                                                              AS total,
+                count(*) FILTER (WHERE state = 'active')                             AS active,
+                count(*) FILTER (WHERE state = 'idle')                               AS idle,
+                count(*) FILTER (WHERE state = 'idle in transaction')                AS idle_in_tx,
+                current_setting('max_connections')::int                              AS max_conn
+              FROM pg_stat_activity WHERE datname = current_database()
+            `),
+            driver.query<Record<string, unknown>>(`
+              SELECT
+                xact_commit AS commits, xact_rollback AS rollbacks, deadlocks, temp_files,
+                CASE WHEN blks_hit + blks_read = 0 THEN 100
+                     ELSE round(blks_hit::numeric / (blks_hit + blks_read) * 100, 2)
+                END AS cache_hit
+              FROM pg_stat_database WHERE datname = current_database()
+            `),
+            driver.query<Record<string, unknown>>(`
+              SELECT n.nspname AS schema, c.relname AS table,
+                pg_size_pretty(pg_total_relation_size(c.oid)) AS total_size,
+                s.n_live_tup
+              FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              LEFT JOIN pg_stat_user_tables s ON s.relid = c.oid
+              WHERE c.relkind = 'r' AND n.nspname NOT IN ('pg_catalog','information_schema')
+              ORDER BY pg_total_relation_size(c.oid) DESC LIMIT 10
+            `),
+          ]);
+          const sv = serverRows[0] ?? {};
+          const db = dbRows[0] ?? {};
+          const cn = connRows[0] ?? {};
+          const pf = perfRows[0] ?? {};
+          const uptimeSec = Number(sv.uptime_sec) || 0;
+          const days = Math.floor(uptimeSec / 86400);
+          const hours = Math.floor((uptimeSec % 86400) / 3600);
+          const mins  = Math.floor((uptimeSec % 3600) / 60);
+          const uptime = days > 0 ? `${days}d ${hours}h ${mins}m` : hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+          send('dashboardLoaded', {
+            connId,
+            pgVersion: sv.pg_version, uptime, host: sv.host, port: sv.port,
+            dbName: db.db_name, dbSize: db.db_size, encoding: db.encoding, collation: db.collation,
+            totalConn: cn.total, activeConn: cn.active, idleConn: cn.idle, idleInTxConn: cn.idle_in_tx, maxConn: cn.max_conn,
+            commits: pf.commits, rollbacks: pf.rollbacks, deadlocks: pf.deadlocks, tempFiles: pf.temp_files, cacheHit: pf.cache_hit,
+            topTables: tableRows,
+          });
+        } catch (err) {
+          send('dashboardLoaded', { connId, error: String(err) });
+        }
+        break;
+      }
+
       // ── Drop table ────────────────────────────────────────────────────────
 
       case 'dropTable': {

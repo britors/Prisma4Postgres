@@ -120,6 +120,12 @@ export function createMenu(win: BrowserWindow): void {
         },
         { type: 'separator' },
         {
+          label: 'Dashboard',
+          accelerator: 'CmdOrCtrl+Shift+D',
+          click: () => send(win, 'openDashboardFromMenu'),
+        },
+        { type: 'separator' },
+        {
           label: 'Create Table…',
           click: () => send(win, 'createTableFromMenu'),
         },

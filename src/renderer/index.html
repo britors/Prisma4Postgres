@@ -273,6 +273,18 @@
     .stats-table th { text-align: left; padding: 3px 8px; font-weight: 600; border-bottom: 2px solid var(--vscode-panel-border); background: var(--vscode-editorGroupHeader-tabsBackground); position: sticky; top: 0; z-index: 1; }
     .stats-table td { padding: 2px 8px; border-bottom: 1px solid rgba(128,128,128,0.1); }
     .stats-table tr:hover td { background: var(--vscode-list-hoverBackground); }
+    /* ── Dashboard (#new) ── */
+    .dash-wrap { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+    .dash-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--vscode-descriptionForeground); margin-bottom: 8px; }
+    .dash-cards { display: flex; flex-wrap: wrap; gap: 10px; }
+    .dash-card { flex: 1; min-width: 130px; padding: 10px 14px; border: 1px solid var(--vscode-panel-border); border-radius: 4px; background: var(--vscode-editor-background); }
+    .dash-card .dc-label { font-size: 10px; color: var(--vscode-descriptionForeground); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
+    .dash-card .dc-value { font-size: 18px; font-weight: 700; color: var(--vscode-foreground); line-height: 1.2; word-break: break-all; }
+    .dash-card .dc-value.sm { font-size: 13px; font-weight: 600; }
+    .dash-card .dc-value.warn { color: #e8a838; }
+    .dash-card .dc-value.ok   { color: var(--vscode-testing-iconPassed, #73c991); }
+    .dash-card .dc-value.danger { color: var(--vscode-errorForeground); }
+    .dash-refresh { position: absolute; top: 10px; right: 14px; }
     .roles-modal { position: absolute; inset: 0; background: rgba(0,0,0,.45); z-index: 300; display: flex; align-items: center; justify-content: center; }
     .roles-modal-box { background: var(--vscode-editor-background); border: 1px solid var(--vscode-panel-border); border-radius: 6px; padding: 20px; min-width: 320px; max-width: 420px; width: 90%; }
     .vacuum-menu { position: absolute; top: 100%; right: 0; z-index: 200; background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); border: 1px solid var(--vscode-panel-border); border-radius: 3px; box-shadow: 0 2px 8px rgba(0,0,0,.3); min-width: 150px; padding: 2px 0; }
@@ -1018,6 +1030,7 @@
       var acts = '';
       if (status === 'disconnected' || status === 'error') acts += btnIcon('connect', { connId: conn.id }, 'codicon-plug', 'Connect');
       else if (status === 'connected') {
+        acts += btnIcon('open-dashboard', { connId: conn.id }, 'codicon-dashboard', 'Dashboard');
         acts += btnIcon('disconnect', { connId: conn.id }, 'codicon-debug-disconnect', 'Disconnect');
         acts += btnIcon('create-table-for-conn', { connId: conn.id }, 'codicon-table', 'Create Table');
       }
@@ -1191,6 +1204,7 @@
       var acts = btnIcon('open-table-detail', { connId: connId, schema: schemaName, table: t.name }, 'codicon-table', 'Open Details')
                + btnIcon('open-ddl', { connId: connId, schema: schemaName, table: t.name }, 'codicon-symbol-structure', 'View DDL')
                + btnIcon('copy-name', { name: t.name }, 'codicon-copy', 'Copy name')
+               + btnIcon('vacuum-table', { connId: connId, schema: schemaName, table: t.name }, 'codicon-wrench', 'VACUUM ANALYZE')
                + btnIcon('drop-table', { connId: connId, schema: schemaName, table: t.name }, 'codicon-trash', 'Drop table');
       var prismaPin = '';
       var estKey = connId + ':' + schemaName;
@@ -1367,6 +1381,10 @@
           api.send('openDDL', { connId: d.connId, schema: d.schema, table: d.table }); break;
         case 'copy-name':
           navigator.clipboard.writeText(d.name).catch(function () {}); break;
+        case 'open-dashboard':
+          openDashboardTab(d.connId); break;
+        case 'vacuum-table':
+          api.send('runVacuum', { connId: d.connId, schema: d.schema, tableName: d.table, op: 'VACUUM ANALYZE' }); break;
         case 'drop-table':
           if (confirm('Drop ' + (d.table) + '?\n\nThis is irreversible.')) api.send('dropTable', { connId: d.connId, schema: d.schema, table: d.table }); break;
         case 'ext-install':
@@ -1445,6 +1463,18 @@ if (tab === 'create-table') { renderCreateTable(); }
       api.send('browseTable', { connId: connId, schema: schema, tableName: tableName, offset: 0, limit: tab.browsePageSize });
     }
 
+    function openDashboardTab(connId) {
+      var existing = tableTabs.find(function (t) { return t.type === 'dashboard' && t.connId === connId; });
+      if (existing) { switchMainTab(existing.id); return; }
+      var conn = connections.find(function (c) { return c.id === connId; });
+      var id = 'dash-' + connId;
+      var tab = { id: id, connId: connId, connLabel: conn ? conn.label : connId, type: 'dashboard', dashData: null, dashError: null };
+      tableTabs.unshift(tab);
+      renderTableTabs();
+      switchMainTab(id);
+      api.send('loadDashboard', { connId: connId });
+    }
+
     function closeTableTab(id) {
       var idx = tableTabs.findIndex(function (t) { return t.id === id; });
       if (idx < 0) return;
@@ -1462,9 +1492,17 @@ if (tab === 'create-table') { renderCreateTable(); }
       if (!container) return;
       var html = tableTabs.map(function (t) {
         var isAct = t.id === activeTableTabId;
-        return '<div class="query-tab table-tab-btn' + (isAct ? ' active' : '') + '" data-ttab="' + esc(t.id) + '" style="min-width:100px;max-width:160px;">'
-          + treeIcon(t.tableName.toLowerCase().includes('view') ? 'view' : 'table')
-          + '<span class="query-tab-name" style="flex:1;overflow:hidden;text-overflow:ellipsis;">' + esc(t.schema + '.' + t.tableName) + '</span>'
+        var icon, label;
+        if (t.type === 'dashboard') {
+          icon = '<i class="codicon codicon-dashboard" style="font-size:13px;margin-right:4px;flex-shrink:0"></i>';
+          label = esc(t.connLabel || t.connId);
+        } else {
+          icon = treeIcon(t.tableName.toLowerCase().includes('view') ? 'view' : 'table');
+          label = esc(t.schema + '.' + t.tableName);
+        }
+        return '<div class="query-tab table-tab-btn' + (isAct ? ' active' : '') + '" data-ttab="' + esc(t.id) + '" style="min-width:100px;max-width:180px;">'
+          + icon
+          + '<span class="query-tab-name" style="flex:1;overflow:hidden;text-overflow:ellipsis;">' + label + '</span>'
           + '<button class="query-tab-close" data-close-ttab="' + esc(t.id) + '" title="Close"><i class="codicon codicon-close"></i></button>'
           + '</div>';
       }).join('');
@@ -1484,9 +1522,96 @@ if (tab === 'create-table') { renderCreateTable(); }
       });
     }
 
+    function renderDashboard(tab) {
+      var toolbar = document.getElementById('table-detail-toolbar');
+      var content = document.getElementById('table-detail-content');
+      if (toolbar) {
+        var conn = connections.find(function(c){ return c.id === tab.connId; });
+        toolbar.innerHTML = '<span class="tdetail-title"><i class="codicon codicon-dashboard" style="margin-right:6px"></i>' + esc((conn && conn.label) || tab.connId) + '</span>'
+          + '<span class="tdetail-meta" id="dash-meta"></span>'
+          + '<button class="btn btn-secondary" id="btn-dash-refresh" style="flex-shrink:0"><i class="codicon codicon-refresh"></i>Refresh</button>';
+        var refBtn = document.getElementById('btn-dash-refresh');
+        if (refBtn) refBtn.onclick = function () { api.send('loadDashboard', { connId: tab.connId }); };
+      }
+      if (!content) return;
+      if (!tab.dashData) {
+        content.innerHTML = '<div class="tdetail-loading"><i class="codicon codicon-loading codicon-modifier-spin"></i>Loading dashboard…</div>';
+        return;
+      }
+      if (tab.dashError) {
+        content.innerHTML = '<div class="tdetail-error">' + esc(tab.dashError) + '</div>';
+        return;
+      }
+      var d = tab.dashData;
+      var metaEl = document.getElementById('dash-meta');
+      if (metaEl) metaEl.textContent = new Date().toLocaleTimeString();
+
+      function card(label, value, cls) {
+        return '<div class="dash-card"><div class="dc-label">' + label + '</div><div class="dc-value' + (cls ? ' ' + cls : '') + '">' + value + '</div></div>';
+      }
+
+      var connPct = d.maxConn > 0 ? Math.round(d.totalConn / d.maxConn * 100) : 0;
+      var connCls = connPct > 80 ? 'danger' : connPct > 60 ? 'warn' : 'ok';
+      var cacheHit = parseFloat(d.cacheHit) || 0;
+      var cacheCls = cacheHit < 90 ? 'warn' : 'ok';
+
+      var html = '<div class="dash-wrap">';
+
+      // Server section
+      html += '<div><div class="dash-section-title">Server</div><div class="dash-cards">'
+        + card('Version', esc(String(d.pgVersion || '—')), 'sm')
+        + card('Uptime', esc(String(d.uptime || '—')), 'sm')
+        + card('Host', esc(String(d.host || 'localhost')), 'sm')
+        + card('Port', esc(String(d.port || '5432')), 'sm')
+        + '</div></div>';
+
+      // Database section
+      html += '<div><div class="dash-section-title">Database</div><div class="dash-cards">'
+        + card('Name', esc(String(d.dbName || '—')), 'sm')
+        + card('Size', esc(String(d.dbSize || '—')), 'sm')
+        + card('Encoding', esc(String(d.encoding || '—')), 'sm')
+        + card('Collation', esc(String(d.collation || '—')), 'sm')
+        + '</div></div>';
+
+      // Connections section
+      html += '<div><div class="dash-section-title">Connections</div><div class="dash-cards">'
+        + card('Total', String(d.totalConn || 0))
+        + card('Active', String(d.activeConn || 0))
+        + card('Idle', String(d.idleConn || 0))
+        + card('Idle in TX', String(d.idleInTxConn || 0))
+        + card('Max', String(d.maxConn || 0))
+        + card('Usage', connPct + '%', connCls)
+        + '</div></div>';
+
+      // Performance section
+      html += '<div><div class="dash-section-title">Performance</div><div class="dash-cards">'
+        + card('Cache Hit', cacheHit.toFixed(1) + '%', cacheCls)
+        + card('Commits', String(d.commits || 0))
+        + card('Rollbacks', String(d.rollbacks || 0))
+        + card('Deadlocks', String(d.deadlocks || 0), d.deadlocks > 0 ? 'danger' : '')
+        + card('Temp Files', String(d.tempFiles || 0), d.tempFiles > 0 ? 'warn' : '')
+        + '</div></div>';
+
+      // Top tables
+      if (d.topTables && d.topTables.length) {
+        html += '<div><div class="dash-section-title">Largest Tables</div>'
+          + '<table class="stats-table"><thead><tr><th>Schema</th><th>Table</th><th>Total size</th><th>Live rows</th></tr></thead><tbody>';
+        d.topTables.forEach(function (r) {
+          html += '<tr><td>' + esc(String(r.schema || '')) + '</td><td>' + esc(String(r.table || '')) + '</td>'
+            + '<td>' + esc(String(r.total_size || '')) + '</td>'
+            + '<td>' + esc(String(r.n_live_tup || '')) + '</td></tr>';
+        });
+        html += '</tbody></table></div>';
+      }
+
+      html += '</div>';
+      content.innerHTML = html;
+    }
+
     function renderActiveTableDetail() {
       var tab = tableTabs.find(function (t) { return t.id === activeTableTabId; });
       if (!tab) return;
+      if (tab.type === 'dashboard') { renderDashboard(tab); return; }
       var titleEl = document.getElementById('table-detail-title');
       var metaEl  = document.getElementById('table-detail-meta');
       var content = document.getElementById('table-detail-content');
@@ -2570,7 +2695,13 @@ if (tab === 'create-table') { renderCreateTable(); }
           if (d.status === 'connected') {
             expanded['c:' + d.id] = true; loadingNodes['c:' + d.id] = true; api.send('loadSchemas', { connId: d.id });
             if (monacoReady && activeQTab().connId === d.id) api.send('loadCompletions', { connId: d.id });
-          } else if (d.status !== 'connecting') { delete schemas[d.id]; }
+            openDashboardTab(d.id);
+          } else if (d.status !== 'connecting') {
+            delete schemas[d.id];
+            // remove dashboard tab when disconnected
+            var dIdx = tableTabs.findIndex(function (t) { return t.type === 'dashboard' && t.connId === d.id; });
+            if (dIdx >= 0) { var wasActive = tableTabs[dIdx].id === activeTableTabId; tableTabs.splice(dIdx, 1); renderTableTabs(); if (wasActive) switchMainTab('query'); }
+          }
           renderTree();
           if (persisted.tab === 'query') renderConnSelect();
           break;
@@ -2586,6 +2717,13 @@ if (tab === 'create-table') { renderCreateTable(); }
         case 'extsLoaded': exts[d.connId] = { installed: d.installed, available: d.available }; delete loadingNodes['eg:' + d.connId]; renderTree(); break;
         case 'seqNextValResult': showToast(d.error ? 'Error: ' + d.error : 'Next value: ' + d.value); break;
         case 'vacuumResult': showToast(d.error ? 'Error: ' + d.error : d.op + ' completed in ' + d.durationMs + 'ms'); break;
+        case 'dashboardLoaded': {
+          var dTab = tableTabs.find(function (t) { return t.type === 'dashboard' && t.connId === d.connId; });
+          if (!dTab) break;
+          if (d.error) { dTab.dashError = d.error; } else { dTab.dashData = d; dTab.dashError = null; }
+          if (activeTableTabId === dTab.id) renderActiveTableDetail();
+          break;
+        }
         case 'dropTableResult':
           if (d.error) { showToast('Error: ' + d.error); }
           else {
@@ -2729,6 +2867,11 @@ if (tab === 'create-table') { renderCreateTable(); }
         case 'createTableFromMenu': {
           var firstConn = connections.find(function(c){ return (statuses[c.id]||'') === 'connected'; });
           openCreateTablePanel(firstConn ? firstConn.id : null);
+          break;
+        }
+        case 'openDashboardFromMenu': {
+          var dashConn = connections.find(function(c){ return (statuses[c.id]||'') === 'connected'; });
+          if (dashConn) openDashboardTab(dashConn.id);
           break;
         }
         case 'completionsLoaded': registerCompletions(d); break;
