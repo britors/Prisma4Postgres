@@ -27,14 +27,15 @@ function saveBounds(win: BrowserWindow): void {
 
 export function createSplashWindow(): BrowserWindow {
   const splash = new BrowserWindow({
-    width: 380,
-    height: 220,
+    width: 700,
+    height: 400,
     frame: false,
     resizable: false,
     minimizable: false,
     maximizable: false,
     center: true,
     title: 'Prisma4Postgres',
+    backgroundColor: '#090b14',
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -56,6 +57,8 @@ export function createMainWindow(): BrowserWindow {
     minHeight: 600,
     show: false,
     frame: false,
+    backgroundColor: '#0d0f1a',
+    autoHideMenuBar: true,
     title: 'Prisma4Postgres',
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),

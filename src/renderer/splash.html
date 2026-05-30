@@ -1,97 +1,236 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+    content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline';">
   <title>Prisma4Postgres</title>
   <style>
-    :root {
-      --fg:       #e2e2f0;
-      --fg-muted: #8888aa;
-      --bg:       #0d0f1a;
-      --bg-card:  #131629;
-      --border:   #1e2040;
-      --accent:   #b44fff;
-      --teal:     #00d4aa;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body {
-      width: 380px; height: 220px;
-      background: var(--bg);
-      color: var(--fg);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      font-size: 13px;
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: #090b14;
+      color: #fff;
+      width: 700px;
+      height: 400px;
+      display: flex;
+      align-items: center;
       overflow: hidden;
-      user-select: none;
+      border-radius: 10px;
       -webkit-app-region: drag;
+      user-select: none;
+      position: relative;
     }
-    .wrap {
+
+    /* Subtle grid lines */
+    .grid {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .grid line { stroke: #4a9fd8; stroke-width: 0.3; opacity: 0.12; }
+
+    /* Left glow */
+    .glow {
+      position: absolute;
+      left: -40px; top: 50%;
+      transform: translateY(-50%);
+      width: 220px; height: 220px;
+      background: radial-gradient(circle, rgba(74,159,216,0.10) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    /* Left side */
+    .left {
       display: flex;
       flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-      gap: 10px;
-      padding: 28px;
+      align-items: flex-start;
+      padding: 0 44px;
+      flex: 0 0 auto;
+      z-index: 1;
     }
-    .logo-row {
+
+    .icon-wrap {
+      margin-bottom: 18px;
+      animation: pop 0.45s cubic-bezier(0.34,1.56,0.64,1) both;
+    }
+    .icon-wrap svg { width: 72px; height: 72px; display: block; }
+
+    .brand {
+      font-size: 30px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      color: #fff;
+      line-height: 1;
+      animation: fadeUp 0.4s 0.1s ease both;
+    }
+    .brand span { color: #4a9fd8; }
+
+    .tagline {
+      font-size: 10px;
+      font-weight: 400;
+      letter-spacing: 3px;
+      color: #4a6a8a;
+      margin-top: 7px;
+      text-transform: uppercase;
+      animation: fadeUp 0.4s 0.15s ease both;
+    }
+
+    .divider {
+      width: 200px;
+      height: 0.5px;
+      background: rgba(74,159,216,0.25);
+      margin: 13px 0;
+      animation: fadeUp 0.4s 0.2s ease both;
+    }
+
+    .copy {
+      font-size: 13px;
+      font-weight: 300;
+      color: #a0b4c8;
+      line-height: 1.6;
+      animation: fadeUp 0.4s 0.25s ease both;
+    }
+
+    .pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 18px;
+      animation: fadeUp 0.4s 0.3s ease both;
+    }
+    .pill {
+      padding: 4px 11px;
+      border-radius: 12px;
+      font-size: 10px;
+      background: #0d1829;
+      border: 0.5px solid #4a9fd8;
+      color: #4a9fd8;
+    }
+
+    /* Right side: mini mockup */
+    .right {
+      flex: 1;
+      padding: 20px 28px 20px 12px;
+      z-index: 1;
+      animation: fadeIn 0.5s 0.35s ease both;
+    }
+
+    .mockup {
+      background: #0d1829;
+      border-radius: 8px;
+      border: 0.5px solid rgba(74,159,216,0.25);
+      padding: 14px;
+      width: 100%;
+    }
+
+    .mock-topbar {
       display: flex;
       align-items: center;
-      gap: 14px;
+      gap: 6px;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 0.5px solid #1e2040;
     }
-    svg.logo { width: 56px; height: 56px; flex-shrink: 0; }
-    .title-block { text-align: left; }
-    h1 {
-      font-size: 22px;
-      font-weight: 700;
-      letter-spacing: -0.3px;
-      line-height: 1.1;
+    .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .dot-r { background: #E05A30; opacity: 0.7; }
+    .dot-y { background: #EF9F27; opacity: 0.7; }
+    .dot-g { background: #3dd68c; opacity: 0.7; }
+    .mock-label { font-size: 9px; color: #4a4a6a; margin-left: 4px; }
+
+    .mock-tree {
+      background: #131629;
+      border-radius: 4px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
     }
-    h1 span { color: #4a9fd8; }
-    .version {
+    .mock-tree-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 0;
+      font-size: 9px;
+      color: #8888aa;
+    }
+    .mock-tree-row.conn { color: #e2e2f0; font-weight: 500; }
+    .mock-tree-row.table { padding-left: 14px; }
+    .mock-tree-row.col { padding-left: 26px; color: #5a5a8a; }
+    .mock-dot { width: 6px; height: 6px; border-radius: 50%; background: #3dd68c; flex-shrink: 0; }
+    .mock-dot.offline { background: #8888aa; opacity: 0.4; }
+
+    .mock-query {
+      background: #131629;
+      border-radius: 4px;
+      padding: 8px 10px;
+    }
+    .mock-query-label { font-size: 8px; font-weight: 500; color: #e2e2f0; margin-bottom: 6px; border-bottom: 0.5px solid #1e2040; padding-bottom: 4px; }
+    .mock-code { font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 8px; color: #8888aa; line-height: 1.7; }
+    .kw { color: #b44fff; }
+    .fn { color: #4a9fd8; }
+    .tbl { color: #00d4aa; }
+
+    /* Progress bar at bottom */
+    .progress-wrap {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 3px;
+      background: #1e2040;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #4a9fd8, #b44fff);
+      animation: load 1.6s 0.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      width: 0%;
+    }
+
+    /* Version badge */
+    .version-badge {
       display: inline-block;
-      margin-top: 4px;
-      font-size: 11px;
+      margin-top: 10px;
+      font-size: 10px;
       font-family: 'Cascadia Code', 'Fira Code', monospace;
-      color: var(--teal);
-      background: var(--bg-card);
-      border: 1px solid var(--border);
+      color: #00d4aa;
+      background: #131629;
+      border: 0.5px solid #1e2040;
       border-radius: 10px;
       padding: 1px 10px;
+      animation: fadeUp 0.4s 0.35s ease both;
     }
-    .divider { width: 100%; height: 1px; background: var(--border); margin: 4px 0; }
-    .progress-track {
-      width: 100%;
-      height: 3px;
-      background: var(--border);
-      border-radius: 2px;
-      overflow: hidden;
+
+    @keyframes pop {
+      from { opacity: 0; transform: scale(0.7); }
+      to   { opacity: 1; transform: scale(1); }
     }
-    .progress-bar {
-      height: 100%;
-      width: 0%;
-      background: linear-gradient(90deg, var(--accent), #4a9fd8);
-      border-radius: 2px;
-      animation: load 1.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
     }
     @keyframes load {
-      0%   { width: 0%; opacity: 1; }
-      70%  { width: 85%; opacity: 1; }
-      90%  { width: 92%; opacity: 1; }
-      100% { width: 100%; opacity: 0.6; }
-    }
-    .status {
-      font-size: 11px;
-      color: var(--fg-muted);
-      align-self: flex-start;
+      0%   { width: 0%; }
+      60%  { width: 72%; }
+      100% { width: 100%; }
     }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="logo-row">
-      <svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500">
+  <svg class="grid" viewBox="0 0 700 400" preserveAspectRatio="none">
+    <line x1="0" y1="133" x2="700" y2="133"/>
+    <line x1="0" y1="266" x2="700" y2="266"/>
+    <line x1="175" y1="0" x2="175" y2="400"/>
+    <line x1="350" y1="0" x2="350" y2="400"/>
+    <line x1="525" y1="0" x2="525" y2="400"/>
+  </svg>
+  <div class="glow"></div>
+
+  <!-- Left: branding -->
+  <div class="left">
+    <div class="icon-wrap">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500">
         <defs>
           <radialGradient id="bg" cx="50%" cy="35%" r="65%">
             <stop offset="0%" stop-color="#182035"/>
@@ -124,26 +263,71 @@
         <line x1="250" y1="62" x2="349" y2="216" stroke="#6ab9f5" stroke-width="2.0" stroke-linecap="round" opacity="0.50"/>
         <circle cx="250" cy="62" r="4" fill="#b8e2ff" opacity="0.90"/>
       </svg>
+    </div>
 
-      <div class="title-block">
-        <h1>Prisma<span>4</span>Postgres</h1>
-        <span class="version" id="ver">v—</span>
+    <div class="brand">Prisma<span>4</span>Postgres</div>
+    <div class="tagline">PostgreSQL Explorer</div>
+    <div class="divider"></div>
+    <div class="copy">Explore. Query.<br>Manage with ease.</div>
+    <div class="pills">
+      <span class="pill">Explorer</span>
+      <span class="pill">Query Editor</span>
+      <span class="pill">Schema</span>
+    </div>
+    <span class="version-badge" id="ver">v—</span>
+  </div>
+
+  <!-- Right: mini mockup -->
+  <div class="right">
+    <div class="mockup">
+      <div class="mock-topbar">
+        <div class="dot dot-r"></div>
+        <div class="dot dot-y"></div>
+        <div class="dot dot-g"></div>
+        <span class="mock-label">Prisma4Postgres</span>
+      </div>
+
+      <div class="mock-tree">
+        <div class="mock-tree-row conn">
+          <div class="mock-dot"></div>
+          localhost:5432
+        </div>
+        <div class="mock-tree-row table">&#9654; users</div>
+        <div class="mock-tree-row col">id · bigint · PK</div>
+        <div class="mock-tree-row col">email · varchar</div>
+        <div class="mock-tree-row table">&#9654; orders</div>
+        <div class="mock-tree-row table">&#9654; products</div>
+        <div class="mock-tree-row conn" style="margin-top:6px;opacity:0.5">
+          <div class="mock-dot offline"></div>
+          staging-db
+        </div>
+      </div>
+
+      <div class="mock-query">
+        <div class="mock-query-label">Query Editor</div>
+        <div class="mock-code">
+          <span class="kw">SELECT</span> u.id, u.email,<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;<span class="fn">COUNT</span>(o.id) <span class="kw">AS</span> orders<br>
+          <span class="kw">FROM</span> <span class="tbl">users</span> u<br>
+          <span class="kw">LEFT JOIN</span> <span class="tbl">orders</span> o <span class="kw">ON</span> o.user_id = u.id<br>
+          <span class="kw">GROUP BY</span> u.id <span class="kw">LIMIT</span> 20;
+        </div>
       </div>
     </div>
+  </div>
 
-    <div class="divider"></div>
-
-    <div class="progress-track">
-      <div class="progress-bar"></div>
-    </div>
-    <div class="status" id="status">Starting…</div>
+  <div class="progress-wrap">
+    <div class="progress-fill"></div>
   </div>
 
   <script>
     var api = window.api;
-    api.invoke('get-about-info').then(function (info) {
-      document.getElementById('ver').textContent = 'v' + info.version;
-    }).catch(function () {});
+    if (api) {
+      api.invoke('get-about-info').then(function(info) {
+        var el = document.getElementById('ver');
+        if (el) el.textContent = 'v' + info.version;
+      }).catch(function() {});
+    }
   </script>
 </body>
 </html>

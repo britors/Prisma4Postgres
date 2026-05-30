@@ -298,12 +298,13 @@ Passwords are encrypted with `electron.safeStorage` and stored in `userData/pass
 - **Query/Results split** resizable (persisted per session)
 - **Row detail panel** slides in on the right when you click a result row
 
-### Title Bar
+### Topbar
 
-- Custom frameless title bar — drag anywhere on the bar to move the window
+- Frameless window — drag anywhere on the topbar to move the window
 - **☰** hamburger button opens the full application menu (File, Edit, View, Connection, Help)
-- **─ □ ✕** window controls (minimize, maximize/restore, close) with comfortable click targets
+- **─ □ ✕** window controls (minimize, maximize/restore, close) in the top-right corner, styled as rounded buttons with a red close hover
 - Maximize icon switches to restore when the window is maximized
+- Splash screen on startup (700×400) with animated progress bar
 
 ---
 
